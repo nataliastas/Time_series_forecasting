@@ -4,6 +4,8 @@ import pandas as pd
 from dash import Dash, html, dcc
 from dash import Input, Output, callback
 from dash.dependencies import Input, Output
+from sklearn import preprocessing
+from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.metrics import mean_squared_error
 import numpy as np
@@ -21,8 +23,8 @@ app = Dash(__name__, assets_folder="../assets")
 colors = {"background": "#F5CCB0", "text": "#F57C00"}
 
 dir = os.path.dirname(__file__)
-path_1 = os.path.join(dir, "raw_sales.csv")
-path_2 = os.path.join(dir, 'train.csv')
+path_1 = os.path.join(dir, "train.csv")
+path_2 = os.path.join(dir, 'raw_sales.csv')
 
 def import_data_1(path):
     data_train = pd.read_csv(path)
@@ -50,7 +52,7 @@ def import_data_2(path):
     encoder = OneHotEncoder(sparse_output=False)
     one_hot_encoded = encoder.fit_transform(data_many[['propertyType']])
     one_hot_df = pd.DataFrame(one_hot_encoded, columns = encoder.get_feature_names_out(['propertyType']))
-    data_many = pd.concat([data2_many_features, one_hot_df], axis = 1)
+    data_many = pd.concat([data_many, one_hot_df], axis = 1)
     data_many = data_many.drop(['propertyType'], axis = 1)
     return data_one, data_many
 
@@ -241,14 +243,14 @@ def data_ML_many_features(data):
 X_train_many, Y_train_many, X_test_many, Y_test_many, train_len_many = data_ML_many_features(data_train_ready_many_features)
 
 def display_time_series(data):
-    sns.lineplot(x=data["Date"], y=data["Weekly_Sales"], marker="o")
-    plt.tight_layout()
-    plt.show()
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=data["Date"], y=data["Weekly_Sales"]))
+    return fig
 
 def display_time_series2(data2_one_feature):    
-    sns.lineplot(x=data2_one_feature['datesold'], y=data2_one_feature['price'])
-    plt.tight_layout()
-    plt.show()
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=data2_one_feature['datesold'], y=data2_one_feature['price']))
+    return fig
 
 def plot_predict(data, train_len, pred, output, input):
     f, ax = plt.subplots(nrows=1, ncols=1, figsize=(20,8))
@@ -453,6 +455,7 @@ methods_array = np.array(["AR method", "MA method", "VAR method", "ARMA method",
                           "Random Forest", "XGBoost", "MLP", "CNN", "RNN", "LSTM", "GRU"])
 data_array = np.array(["Sales data - Walmart", "House prices"])
 count_features_array = np.array(["One feature", "Many features"])
+scores = pd.DataFrame()
 
 
 #App
@@ -466,132 +469,63 @@ app.layout = html.Div(
         html.Div(
             [
                 html.H3(
-                    children="Wybierz liczbę sypialni",
+                    children="Select data",
                     style={"textAlign": "center", "color": colors["text"]},
                     className="card",
                 ),
-                dcc.Dropdown(
-                    df["bedrooms"].unique(),
-                    df["bedrooms"].unique(),
-                    id="bedrooms-selection",
-                    multi=True,
-                ),
-            ],
-            style={"width": "48%", "display": "inline-block"},
-        ),
-        html.Div(
-            [
-                html.H3(
-                    children="Wybierz typ własności nieruchomości",
-                    style={"textAlign": "center", "color": colors["text"]},
-                    className="card",
-                ),
-                dcc.Dropdown(
-                    df["propertyType"].unique(),
-                    df["propertyType"].unique(),
-                    id="type-selection",
-                    multi=True,
-                ),
-            ],
-            style={"width": "48%", "float": "right", "display": "inline-block"},
-        ),
-        # html.Br(),
-        html.Div(
-            [
-                html.H3(
-                    children="Wybierz zakres lat sprzedaży nieruchomości",
-                    style={"textAlign": "center", "color": colors["text"]},
-                    className="card",
-                ),
-                dcc.RangeSlider(
-                    df["Year"].min(),
-                    df["Year"].max(),
-                    step=None,
-                    id="date-selection",
-                    value=[df["Year"].min(), df["Year"].max()],
-                    marks={str(year): str(year) for year in df["Year"].unique()},
-                ),
-            ]
+                dcc.Dropdown(np.unique(data_array), None, id="data-selection"),
+            ],style={"width": "48%","float":"center", "display": "inline-block"},
         ),
         html.Div(dcc.Graph(id="chart")),
-        html.Div(
-            [
-                html.H3(
-                    children="Wybierz metodę przewidywania, aby zobaczyć jej skuteczność",
-                    style={"textAlign": "center", "color": colors["text"]},
-                    className="card",
-                ),
-                dcc.Dropdown(np.unique(methods_array), None, id="method-selection"),
-            ]
-        ),
-        html.Div(dcc.Graph(id="chart2")),
     ],
 )
 
 
 @callback(
     Output("chart", "figure"),
-    Output("chart2", "figure"),
-    Input("bedrooms-selection", "value"),
-    Input("type-selection", "value"),
-    Input("date-selection", "value"),
-    Input("method-selection", "value"),
+    # Output("chart2", "figure"),
+    # Input("bedrooms-selection", "value"),
+    # Input("type-selection", "value"),
+    # Input("date-selection", "value"),
+    Input("data-selection", "value"),
 )
 def update_graph(
-    selected_bedrooms_value: str,
-    selected_type_value: str,
-    dates_selection_value: str,
-    selected_method_value: str,
+    # selected_bedrooms_value: str,
+    # selected_type_value: str,
+    # dates_selection_value: str,
+    selected_data_value: str,
 ) -> Any:
-    tmp = df.loc[df.loc[:, "bedrooms"].isin(selected_bedrooms_value), :]
-    tmp = tmp.loc[tmp.loc[:, "propertyType"].isin(selected_type_value), :]
-    tmp = tmp[tmp.loc[:, "Year"] <= dates_selection_value[1]]
-    tmp = tmp[tmp.loc[:, "Year"] >= dates_selection_value[0]]
+    # tmp = df.loc[df.loc[:, "bedrooms"].isin(selected_bedrooms_value), :]
+    # tmp = tmp.loc[tmp.loc[:, "propertyType"].isin(selected_type_value), :]
+    # tmp = tmp[tmp.loc[:, "Year"] <= dates_selection_value[1]]
+    # tmp = tmp[tmp.loc[:, "Year"] >= dates_selection_value[0]]
 
-    fig = px.line(
-        tmp,
-        x="datesold",
-        y="price",
-        labels={
-            "datesold": "Data sprzedaży",
-            "price": "Cena nieruchomości",
-        },
-    )
+    fig2 = px.line()
 
-    if selected_method_value == "Decision tree":
-        prediction_DT, rmse_DT = Decision_Tree_predict(
-            os.path.join(dir, "model_DT.pkl"),
-            X_test,
-            Y_test,
-        )
-        fig2 = plot_predict(df, train_len, prediction_DT, df.price, df.datesold)
-    elif selected_method_value == "Random Forest":
-        prediction_RF, rmse_RF = Random_Forest_predict(
-            os.path.join(dir, "model_FR.pkl"),
-            X_test,
-            Y_test,
-        )
-        fig2 = plot_predict(df, train_len, prediction_RF, df.price, df.datesold)
+    if selected_data_value == "Sales data - Walmart":
+        fig = display_time_series(data_train_ready_one_feature)
+    elif selected_data_value == "House prices":
+        fig = display_time_series2(data2_one_feature)
     else:
-        fig2 = fig
+        fig = fig2
 
-    annotations = []
-    annotations.append(
-        dict(
-            xref="paper",
-            yref="paper",
-            x=0.0,
-            y=1.05,
-            xanchor="left",
-            yanchor="bottom",
-            text="Ceny sprzedaży nieruchomości",
-            font=dict(family="Arial", size=30, color=colors["text"]),
-            showarrow=False,
-        )
-    )
+    # annotations = []
+    # annotations.append(
+    #     dict(
+    #         xref="paper",
+    #         yref="paper",
+    #         x=0.0,
+    #         y=1.05,
+    #         xanchor="left",
+    #         yanchor="bottom",
+    #         text="Ceny sprzedaży nieruchomości",
+    #         font=dict(family="Arial", size=30, color=colors["text"]),
+    #         showarrow=False,
+    #     )
+    # )
 
-    fig.update_layout(plot_bgcolor=colors["background"], annotations=annotations)
-    return fig, fig2
+    fig.update_layout(plot_bgcolor=colors["background"])
+    return fig
 
 
 if __name__ == "__main__":
