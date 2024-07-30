@@ -18,6 +18,11 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.feature_selection import chi2, f_classif, f_regression
+from dash import dash_table
+from statsmodels.tsa.arima.model import ARIMA
+from statsmodels.tsa.vector_ar.var_model import VAR
+from statsmodels.tsa.ar_model import AutoReg
+
 
 app = Dash(__name__, assets_folder="../assets")
 colors = {"background": "#F5CCB0", "text": "#F57C00"}
@@ -253,29 +258,35 @@ def display_time_series2(data2_one_feature):
     return fig
 
 def plot_predict(data, train_len, pred, output, input):
-    f, ax = plt.subplots(nrows=1, ncols=1, figsize=(20,8))
-    sns.lineplot(
-        x=input[train_len : len(data)],
-        y=output[train_len : len(data)],
-        marker = 'o',
-        label="test",
-        color="grey",
+    fig2 = go.Figure()
+    fig2.add_trace(
+        go.Scatter(
+            x=input[train_len : len(data)],
+            y=output[train_len : len(data)],
+            name="test",
+        )
     )
-    sns.lineplot(
-        x=input[:train_len],
-        y=output[:train_len],
-        marker = 'o',
-        label="train",
+    fig2.add_trace(
+        go.Scatter(
+            x=input[:train_len],
+            y=output[:train_len],
+            name="train",
+        )
     )
-    sns.lineplot(x=input[train_len : len(data)].reset_index(drop=True), y=pred, marker = 'o', label="pred")
-    plt.tight_layout()
-    plt.show()
+    fig2.add_trace(
+        go.Scatter(
+            x=input[train_len : len(data)].reset_index(drop=True),
+            y=pred,
+            name="prediction",
+        )
+    )
+
+    return fig2
 
 def AR_model(data, output, lags):
     train_len = int(0.9 * len(data))
     train = output[:train_len]
     ar_model = AutoReg(train, lags=lags).fit()
-    # print(ar_model.summary())
     pred = ar_model.predict(start=train_len, end=len(data), dynamic=False)
     pred = pred.reset_index(drop = True)
     return pred, train_len
@@ -305,7 +316,6 @@ def VAR_method(data, name):
     lag_order = optimal_lags.selected_orders["bic"]
     results = var_model.fit(lag_order)
     forecast_input = train.values[-lag_order:]
-    print(results.summary())
     pred = results.forecast(forecast_input, steps=len(test))
     pred = pred[:, 2]
     return pred, train_len
@@ -320,7 +330,6 @@ def MA_method(data, name):
     test = test.drop([name], axis=1)
     model = ARIMA(np.asarray(train), order=(0, 0, 5))
     model_fit = model.fit()
-    print(model_fit.summary())
     pred_ma = model_fit.get_forecast(steps=len(test))
     pred_ma_series = pd.Series(pred_ma.predicted_mean, index=test.index)
     pred = pred_ma_series.values
@@ -342,7 +351,6 @@ train_ARMA_2, test_ARMA_2, train_len_2 = data_ARMA(data2_one_feature, 'datesold'
 def ARMA_method(train, test, order):
     model = ARIMA(np.asarray(train), order=order)
     model_fit = model.fit()
-    print(model_fit.summary())
     pred_ma = model_fit.get_forecast(steps=len(test))
     pred_ma_series = pd.Series(pred_ma.predicted_mean, index=test.index)
     pred = pred_ma_series.values
@@ -351,7 +359,6 @@ def ARMA_method(train, test, order):
 def ARIMA_method(train, test, order):
     model = ARIMA(np.asarray(train), order=order)
     model_fit = model.fit()
-    print(model_fit.summary())
     pred_ma = model_fit.get_forecast(steps=len(test))
     pred_ma_series = pd.Series(pred_ma.predicted_mean, index=test.index)
     pred = pred_ma_series.values
@@ -362,7 +369,6 @@ def SARIMA_method(train, test, order1, order2):
         np.asarray(train), order=order1, seasonal_order=order2
     )
     model_fit = model.fit()
-    print(model_fit.summary())
     pred_ma = model_fit.get_forecast(steps=len(test))
     pred_ma_series = pd.Series(pred_ma.predicted_mean, index=test.index)
     pred = pred_ma_series.values
@@ -372,21 +378,18 @@ def Decision_Tree_predict(name, X_test, Y_test):
     pipe = pickle.load(open(name, "rb"))
     predictions = pipe.predict(X_test)
     rmse = float(format(np.sqrt(mean_squared_error(Y_test, predictions)), ".3f"))
-    print("\nRMSE: ", rmse)
     return predictions
 
 def Random_Forest_predict(name, X_test, Y_test):
     pipe = pickle.load(open(name, "rb"))
     predictions = pipe.predict(X_test)
     rmse = float(format(np.sqrt(mean_squared_error(Y_test, predictions)), ".3f"))
-    print("\nRMSE: ", rmse)
     return predictions
 
 def XGB_method_predict(name, X_test, Y_test):
     pipe = pickle.load(open(name, "rb"))
     predictions = pipe.predict(X_test)
     rmse = float(format(np.sqrt(mean_squared_error(Y_test, predictions)), ".3f"))
-    print("\nRMSE: ", rmse)
     return predictions
 
 def data_neural_many_features(data):
@@ -447,15 +450,14 @@ def neural_networks_predict(name, X_train, Y_train, X_test, Y_test):
         format(np.sqrt(mean_squared_error(Y_train, y_train_pred)), ".3f")
     )
     rmse_test = float(format(np.sqrt(mean_squared_error(Y_test, y_test_pred)), ".3f"))
-    print(rmse_train)
-    print(rmse_test)
     return pred
 
 methods_array = np.array(["AR method", "MA method", "VAR method", "ARMA method", "ARIMA method", "SARIMA method", "Decision tree", 
                           "Random Forest", "XGBoost", "MLP", "CNN", "RNN", "LSTM", "GRU"])
 data_array = np.array(["Sales data - Walmart", "House prices"])
 count_features_array = np.array(["One feature", "Many features"])
-scores = pd.DataFrame()
+scores_1 = pd.DataFrame([[11,22,33,44],[55,66,77,88]], columns=['one','two','three','four'])
+scores_2 = pd.DataFrame([[1,2,3,4],[5,6,7,8]], columns=['one','two','three','four'])
 
 
 #App
@@ -477,37 +479,63 @@ app.layout = html.Div(
             ],style={"width": "48%","float":"center", "display": "inline-block"},
         ),
         html.Div(dcc.Graph(id="chart")),
+        html.Div(
+            [
+                html.H3(
+                    children="Table with comparison statistical and machine learning methods for chosen data",
+                    style={"textAlign": "center", "color": colors["text"]},
+                ),
+            ]
+        ),
+        dash_table.DataTable(id = "table", page_size=10),
+        html.Div(
+            [
+                html.H3(
+                    children="Select method to watch plot with predict",
+                    style={"textAlign": "center", "color": colors["text"]},
+                    className="card",
+                ),
+                dcc.Dropdown(np.unique(methods_array), None, id="method-selection"),
+            ]
+        ),
+        html.Div(dcc.Graph(id="chart2")),
+        html.Div(dcc.Graph(id="chart3")),
     ],
 )
 
 
 @callback(
     Output("chart", "figure"),
-    # Output("chart2", "figure"),
+    Output("table", "data"),
+    Output("table", "columns"),
+    Output("chart2", "figure"),
+    Output("chart3", "figure"),
     # Input("bedrooms-selection", "value"),
     # Input("type-selection", "value"),
-    # Input("date-selection", "value"),
+    Input("method-selection", "value"),
     Input("data-selection", "value"),
 )
 def update_graph(
     # selected_bedrooms_value: str,
     # selected_type_value: str,
-    # dates_selection_value: str,
+    selected_method_value: str,
     selected_data_value: str,
 ) -> Any:
-    # tmp = df.loc[df.loc[:, "bedrooms"].isin(selected_bedrooms_value), :]
-    # tmp = tmp.loc[tmp.loc[:, "propertyType"].isin(selected_type_value), :]
-    # tmp = tmp[tmp.loc[:, "Year"] <= dates_selection_value[1]]
-    # tmp = tmp[tmp.loc[:, "Year"] >= dates_selection_value[0]]
 
     fig2 = px.line()
 
     if selected_data_value == "Sales data - Walmart":
         fig = display_time_series(data_train_ready_one_feature)
+        columns = [{'name': col, 'id': col} for col in scores_1.columns]
+        tab = scores_1.to_dict('records')
     elif selected_data_value == "House prices":
         fig = display_time_series2(data2_one_feature)
+        columns = [{'name': col, 'id': col} for col in scores_2.columns]
+        tab = scores_2.to_dict('records')
     else:
+        columns = [{'name': col, 'id': col} for col in scores_1.columns]
         fig = fig2
+        tab = scores_1.to_dict('records')
 
     # annotations = []
     # annotations.append(
@@ -524,8 +552,161 @@ def update_graph(
     #     )
     # )
 
-    fig.update_layout(plot_bgcolor=colors["background"])
-    return fig
+    # fig.update_layout(plot_bgcolor=colors["background"])
+
+    if selected_method_value == "AR method":
+        if selected_data_value == 'Sales data - Walmart':
+            prediction_AR, train_len = AR_model(data_train_ready_one_feature, data_train_ready_one_feature.Weekly_Sales, 5)
+            fig3 = plot_predict(data_train_ready_one_feature, train_len, prediction_AR, data_train_ready_one_feature.Weekly_Sales, 
+                data_train_ready_one_feature.Date)
+            fig4 = fig2
+        elif selected_data_value == 'House prices':
+            prediction_AR_2, train_len_2 = AR_model(data2_one_feature, data2_one_feature.price, 5)
+            fig3 = plot_predict(data2_one_feature, train_len_2, prediction_AR_2, data2_one_feature.price, data2_one_feature.datesold)
+            fig4 = fig2
+    elif selected_method_value == 'MA method':
+        if selected_data_value == 'Sales data - Walmart':
+            pred_MA, train_len = MA_method(data_train_ready_one_feature, 'Date')
+            fig3 = plot_predict(data_train_ready_one_feature, train_len, pred_MA, data_train_ready_one_feature.Weekly_Sales, 
+                        data_train_ready_one_feature.Date)
+            fig4 = fig2
+        elif selected_data_value == 'House prices':
+            pred_MA_2, train_len_2 = MA_method(data2_one_feature, 'datesold')
+            fig3 = plot_predict(data2_one_feature, train_len_2, pred_MA_2, data2_one_feature.price, 
+             data2_one_feature.datesold)
+            fig4 = fig2
+    elif selected_method_value == 'VAR method':
+        if selected_data_value == 'Sales data - Walmart':
+            predictions_VAR, train_len = VAR_method(data_train_ready_many_features, 'Date')
+            fig4 = plot_predict(data_train_ready_many_features, train_len, predictions_VAR, data_train_ready_many_features.Weekly_Sales,
+            data_train_ready_many_features.Date)
+            fig3 = fig2
+        elif selected_data_value == 'House prices':
+            fig4 = fig2
+            fig3 = fig2
+    elif selected_method_value == 'ARMA method':
+        if selected_data_value == 'Sales data - Walmart':
+            prediction_ARMA = ARMA_method(train_ARMA, test_ARMA, (16,0,4))
+            fig3 = plot_predict(data_train_ready_one_feature, train_len, prediction_ARMA, data_train_ready_one_feature.Weekly_Sales, 
+             data_train_ready_one_feature.Date)
+            fig4 = fig2
+        elif selected_data_value == 'House prices':
+            prediction_ARMA_2 = ARMA_method(train_ARMA_2, test_ARMA_2, (4,0,5))
+            fig3 = plot_predict(data2_one_feature, train_len_2, prediction_ARMA_2, data2_one_feature.price, 
+             data2_one_feature.datesold)
+            fig4 = fig2
+    elif selected_method_value == 'ARIMA method':
+        if selected_data_value == 'Sales data - Walmart':
+            prediction_ARIMA = ARIMA_method(train_ARMA, test_ARMA, (16,0,4))
+            fig3 = plot_predict(data_train_ready_one_feature, train_len, prediction_ARIMA, data_train_ready_one_feature.Weekly_Sales, 
+             data_train_ready_one_feature.Date)
+            fig4 = fig2
+        elif selected_data_value == 'House prices':
+            prediction_ARIMA_2 = ARIMA_method(train_ARMA_2, test_ARMA_2, (4,0,5))
+            fig3 = plot_predict(data2_one_feature, train_len_2, prediction_ARIMA_2, data2_one_feature.price, 
+             data2_one_feature.datesold)
+            fig4 = fig2
+    elif selected_method_value == 'SARIMA method':
+        if selected_data_value == 'Sales data - Walmart':
+            prediction_SARIMA = SARIMA_method(train_ARMA, test_ARMA, (1,0,0), (0, 0, 0, 12))
+            fig3 = plot_predict(data_train_ready_one_feature, train_len, prediction_SARIMA, data_train_ready_one_feature.Weekly_Sales, 
+             data_train_ready_one_feature.Date)
+            fig4 = fig2
+        elif selected_data_value == 'House prices':
+            prediction_SARIMA_2 = SARIMA_method(train_ARMA_2, test_ARMA_2, (0,0,2), (0, 0, 1, 12))
+            fig3 = plot_predict(data2_one_feature, train_len_2, prediction_SARIMA_2, data2_one_feature.price, 
+             data2_one_feature.datesold)
+            fig4 = fig2
+    elif selected_method_value == 'Decision tree':
+        if selected_data_value == 'Sales data - Walmart':
+            prediction_DT_one = Decision_Tree_predict("model_DT_one.pkl", X_test_one, Y_test_one)
+            fig3 = plot_predict(data_train_ready_one_feature, train_len_one, prediction_DT_one, data_train_ready_one_feature.Weekly_Sales, 
+             data_train_ready_one_feature.Date)
+            prediction_DT_many = Decision_Tree_predict("model_DT_many.pkl", X_test_many, Y_test_many)
+            fig4 = plot_predict(data_train_ready_many_features, train_len_many, prediction_DT_many, data_train_ready_many_features.Weekly_Sales, 
+             data_train_ready_many_features.Date)
+        elif selected_data_value == 'House prices':
+            prediction_DT_one_2 = Decision_Tree_predict("model_DT_one_2.pkl", X_test_one_2, Y_test_one_2)
+            fig3 = plot_predict(data2_one_feature, train_len_one_2, prediction_DT_one_2, data2_one_feature.price, 
+             data2_one_feature.datesold)
+            prediction_DT_many_2 = Decision_Tree_predict("model_DT_many_2.pkl", X_test_many_2, Y_test_many_2)
+            fig4 = plot_predict(data2_many_features, train_len_many_2, prediction_DT_many_2, data2_many_features.price, 
+             data2_many_features.datesold)
+    elif selected_method_value == 'Random Forest':
+        if selected_data_value == 'Sales data - Walmart':
+            prediction_RF_one = Random_Forest_predict("model_FR_one.pkl", X_test_one, Y_test_one)
+            prediction_RF_many = Random_Forest_predict("model_FR_many.pkl", X_test_many, Y_test_many)
+            fig3 = plot_predict(data_train_ready_one_feature, train_len_one, prediction_RF_one, data_train_ready_one_feature.Weekly_Sales, 
+             data_train_ready_one_feature.Date)
+            fig4 = plot_predict(data_train_ready_many_features, train_len_many, prediction_RF_many, data_train_ready_many_features.Weekly_Sales, 
+             data_train_ready_many_features.Date)
+        elif selected_data_value == 'House prices':
+            prediction_RF_one_2 = Random_Forest_predict("model_FR_one_2.pkl", X_test_one_2, Y_test_one_2)
+            prediction_RF_many_2 = Random_Forest_predict("model_FR_many_2.pkl", X_test_many_2, Y_test_many_2)
+            fig3 = plot_predict(data2_one_feature, train_len_one_2, prediction_RF_one_2, data2_one_feature.price, 
+             data2_one_feature.datesold)
+            fig4 = plot_predict(data2_many_features, train_len_many_2, prediction_RF_many_2, data2_many_features.price, 
+             data2_many_features.datesold)
+    elif selected_method_value == 'XGBoost':
+        if selected_data_value == 'Sales data - Walmart':
+            prediction_XGB_one = XGB_method_predict("model_XGB_one.pkl", X_test_one, Y_test_one)
+            prediction_XGB_many = XGB_method_predict("model_XGB_many.pkl", X_test_many, Y_test_many)
+            fig3 = plot_predict(data_train_ready_one_feature, train_len_one, prediction_XGB_one, data_train_ready_one_feature.Weekly_Sales, 
+             data_train_ready_one_feature.Date)
+            fig4 = plot_predict(data_train_ready_many_features, train_len_many, prediction_XGB_many, data_train_ready_many_features.Weekly_Sales, 
+             data_train_ready_many_features.Date)
+        elif selected_data_value == 'House prices':
+            prediction_XGB_one_2 = XGB_method_predict("model_XGB_one_2.pkl", X_test_one_2, Y_test_one_2)
+            prediction_XGB_many_2 = XGB_method_predict("model_XGB_many_2.pkl", X_test_many_2, Y_test_many_2)
+            fig3 = plot_predict(data2_one_feature, train_len_one_2, prediction_XGB_one_2, data2_one_feature.price, 
+             data2_one_feature.datesold)
+            fig4 = plot_predict(data2_many_features, train_len_many_2, prediction_XGB_many_2, data2_many_features.price, 
+             data2_many_features.datesold)
+    elif selected_method_value == 'MLP':
+        if selected_data_value == 'Sales data - Walmart':
+            MLP_prediction = neural_networks_predict("model_MLP.pkl", X_train, Y_train, X_test, Y_test)
+            fig4 = plot_predict(data_train_ready_many_features, train_len_many, MLP_prediction)
+            fig3 = fig2
+        elif selected_data_value == 'House prices':
+            fig4 = fig2
+            fig3 = fig2
+    elif selected_method_value == 'CNN':
+        if selected_data_value == 'Sales data - Walmart':
+            CNN_prediction = neural_networks_predict("model_CNN.pkl", X_train, Y_train, X_test, Y_test)
+            fig4 = plot_predict(data_train_ready_many_features, train_len_many, CNN_prediction)
+            fig3 = fig2
+        elif selected_data_value == 'House prices':
+            fig4 = fig2
+            fig3 = fig2
+    elif selected_method_value == 'RNN':
+        if selected_data_value == 'Sales data - Walmart':
+            RNN_prediction = neural_networks_predict("model_RNN.pkl", X_train, Y_train, X_test, Y_test)
+            fig4 = plot_predict(data_train_ready_many_features, train_len_many, RNN_prediction)
+            fig3 = fig2
+        elif selected_data_value == 'House prices':
+            fig4 = fig2
+            fig3 = fig2
+    elif selected_method_value == 'LSTM':
+        if selected_data_value == 'Sales data - Walmart':
+            LSTM_prediction = neural_networks_predict("model_LSTM.pkl", X_train, Y_train, X_test, Y_test)
+            fig4 = plot_predict(data_train_ready_many_features, train_len_many, LSTM_prediction)
+            fig3 = fig2
+        elif selected_data_value == 'House prices':
+            fig4 = fig2
+            fig3 = fig2
+    elif selected_method_value == 'GRU':
+        if selected_data_value == 'Sales data - Walmart':
+            GRU_prediction = neural_networks_predict("model_GRU.pkl", X_train, Y_train, X_test, Y_test)
+            fig4 = plot_predict(data_train_ready_many_features, train_len_many, GRU_prediction)
+            fig3 = fig2
+        elif selected_data_value == 'House prices':
+            fig4 = fig2
+            fig3 = fig2
+    else:
+        fig3 = fig2
+        fig4 = fig2
+
+    return  fig, tab, columns, fig3, fig4
 
 
 if __name__ == "__main__":
