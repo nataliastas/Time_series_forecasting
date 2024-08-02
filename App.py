@@ -22,6 +22,9 @@ from dash import dash_table
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.vector_ar.var_model import VAR
 from statsmodels.tsa.ar_model import AutoReg
+import tensorflow as tf
+from tensorflow import keras
+import statsmodels.api as sm
 
 
 app = Dash(__name__, assets_folder="../assets")
@@ -38,9 +41,9 @@ def import_data_1(path):
     data_train_ready = data_train_ready[["Date", "Weekly_Sales"]]
     label_encoder = preprocessing.LabelEncoder()
     data_train["IsHoliday"] = label_encoder.fit_transform(data_train["IsHoliday"])
-    data_train_clean_many = data_train[["Store", "Date", "Weekly_Sales", "IsHoliday"]]
+    data_train_clean_many = data_train[["Date", "Weekly_Sales", "IsHoliday"]]
     data_train_ready_many = data_train_clean_many.groupby(
-        ["Date", "Store", "IsHoliday"], as_index=False
+        ["Date", "IsHoliday"], as_index=False
     ).sum()
     return data_train_ready, data_train_ready_many
 
@@ -223,7 +226,6 @@ def data_ML_many_features(data):
             "dayofyear",
             "dayofmonth",
             "weekofyear",
-            "Store",
             "IsHoliday",
         ]
     ]
@@ -237,7 +239,6 @@ def data_ML_many_features(data):
             "dayofyear",
             "dayofmonth",
             "weekofyear",
-            "Store",
             "IsHoliday",
         ]
     ]
@@ -260,24 +261,27 @@ def display_time_series2(data2_one_feature):
 def plot_predict(data, train_len, pred, output, input):
     fig2 = go.Figure()
     fig2.add_trace(
-        go.Scatter(
-            x=input[train_len : len(data)],
-            y=output[train_len : len(data)],
+        go.Line(
+            x=input[train_len : len(data)].reset_index(drop=True),
+            y=output[train_len : len(data)].reset_index(drop=True),
             name="test",
+            fill = None
         )
     )
     fig2.add_trace(
-        go.Scatter(
-            x=input[:train_len],
-            y=output[:train_len],
+        go.Line(
+            x=input[:train_len].reset_index(drop=True),
+            y=output[:train_len].reset_index(drop=True),
             name="train",
+            fill = None
         )
     )
     fig2.add_trace(
-        go.Scatter(
+        go.Line(
             x=input[train_len : len(data)].reset_index(drop=True),
             y=pred,
             name="prediction",
+            fill = None
         )
     )
 
@@ -296,9 +300,9 @@ def import_data_with_many_features(path):
     data_train = pd.read_csv(path)
     label_encoder = preprocessing.LabelEncoder()
     data_train["IsHoliday"] = label_encoder.fit_transform(data_train["IsHoliday"])
-    data_train_clean = data_train[["Store", "Date", "Weekly_Sales", "IsHoliday"]]
+    data_train_clean = data_train[["Date", "Weekly_Sales", "IsHoliday"]]
     data_train_ready = data_train_clean.groupby(
-        ["Date", "Store", "IsHoliday"], as_index=False
+        ["Date", "IsHoliday"], as_index=False
     ).sum()
     data_train_ready
     return data_train_ready
@@ -345,8 +349,8 @@ def data_ARMA(data, name):
     test = test.drop([name], axis=1)
     return train, test, train_len
 
-train_ARMA, test_ARMA, train_len = data_ARMA(data_train_ready_one_feature, 'Date')
-train_ARMA_2, test_ARMA_2, train_len_2 = data_ARMA(data2_one_feature, 'datesold')
+train_ARMA, test_ARMA, train_len_ARMA = data_ARMA(data_train_ready_one_feature, 'Date')
+train_ARMA_2, test_ARMA_2, train_len_2_ARMA = data_ARMA(data2_one_feature, 'datesold')
 
 def ARMA_method(train, test, order):
     model = ARIMA(np.asarray(train), order=order)
@@ -417,7 +421,6 @@ def data_neural_many_features(data):
             "dayofyear",
             "dayofmonth",
             "weekofyear",
-            "Store",
             "IsHoliday",
         ]
     ]
@@ -431,7 +434,6 @@ def data_neural_many_features(data):
             "dayofyear",
             "dayofmonth",
             "weekofyear",
-            "Store",
             "IsHoliday",
         ]
     ]
@@ -439,7 +441,11 @@ def data_neural_many_features(data):
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_test = scaler.fit_transform(X_test)
-    return X_train, Y_train, X_test, Y_test
+    return X_train, Y_train, X_test, Y_test, train_len
+
+X_train, Y_train, X_test, Y_test, train_len_neural = data_neural_many_features(
+    data_train_ready_many_features
+)
 
 def neural_networks_predict(name, X_train, Y_train, X_test, Y_test):
     model = pickle.load(open(name, "rb"))
@@ -587,34 +593,34 @@ def update_graph(
     elif selected_method_value == 'ARMA method':
         if selected_data_value == 'Sales data - Walmart':
             prediction_ARMA = ARMA_method(train_ARMA, test_ARMA, (16,0,4))
-            fig3 = plot_predict(data_train_ready_one_feature, train_len, prediction_ARMA, data_train_ready_one_feature.Weekly_Sales, 
+            fig3 = plot_predict(data_train_ready_one_feature, train_len_ARMA, prediction_ARMA, data_train_ready_one_feature.Weekly_Sales, 
              data_train_ready_one_feature.Date)
             fig4 = fig2
         elif selected_data_value == 'House prices':
             prediction_ARMA_2 = ARMA_method(train_ARMA_2, test_ARMA_2, (4,0,5))
-            fig3 = plot_predict(data2_one_feature, train_len_2, prediction_ARMA_2, data2_one_feature.price, 
+            fig3 = plot_predict(data2_one_feature, train_len_2_ARMA, prediction_ARMA_2, data2_one_feature.price, 
              data2_one_feature.datesold)
             fig4 = fig2
     elif selected_method_value == 'ARIMA method':
         if selected_data_value == 'Sales data - Walmart':
             prediction_ARIMA = ARIMA_method(train_ARMA, test_ARMA, (16,0,4))
-            fig3 = plot_predict(data_train_ready_one_feature, train_len, prediction_ARIMA, data_train_ready_one_feature.Weekly_Sales, 
+            fig3 = plot_predict(data_train_ready_one_feature, train_len_ARMA, prediction_ARIMA, data_train_ready_one_feature.Weekly_Sales, 
              data_train_ready_one_feature.Date)
             fig4 = fig2
         elif selected_data_value == 'House prices':
             prediction_ARIMA_2 = ARIMA_method(train_ARMA_2, test_ARMA_2, (4,0,5))
-            fig3 = plot_predict(data2_one_feature, train_len_2, prediction_ARIMA_2, data2_one_feature.price, 
+            fig3 = plot_predict(data2_one_feature, train_len_2_ARMA, prediction_ARIMA_2, data2_one_feature.price, 
              data2_one_feature.datesold)
             fig4 = fig2
     elif selected_method_value == 'SARIMA method':
         if selected_data_value == 'Sales data - Walmart':
             prediction_SARIMA = SARIMA_method(train_ARMA, test_ARMA, (1,0,0), (0, 0, 0, 12))
-            fig3 = plot_predict(data_train_ready_one_feature, train_len, prediction_SARIMA, data_train_ready_one_feature.Weekly_Sales, 
+            fig3 = plot_predict(data_train_ready_one_feature, train_len_ARMA, prediction_SARIMA, data_train_ready_one_feature.Weekly_Sales, 
              data_train_ready_one_feature.Date)
             fig4 = fig2
         elif selected_data_value == 'House prices':
             prediction_SARIMA_2 = SARIMA_method(train_ARMA_2, test_ARMA_2, (0,0,2), (0, 0, 1, 12))
-            fig3 = plot_predict(data2_one_feature, train_len_2, prediction_SARIMA_2, data2_one_feature.price, 
+            fig3 = plot_predict(data2_one_feature, train_len_2_ARMA, prediction_SARIMA_2, data2_one_feature.price, 
              data2_one_feature.datesold)
             fig4 = fig2
     elif selected_method_value == 'Decision tree':
@@ -665,7 +671,8 @@ def update_graph(
     elif selected_method_value == 'MLP':
         if selected_data_value == 'Sales data - Walmart':
             MLP_prediction = neural_networks_predict("model_MLP.pkl", X_train, Y_train, X_test, Y_test)
-            fig4 = plot_predict(data_train_ready_many_features, train_len_many, MLP_prediction)
+            fig4 = plot_predict(data_train_ready_many_features, train_len_neural, MLP_prediction, data_train_ready_many_features.Weekly_Sales, 
+             data_train_ready_many_features.Date)
             fig3 = fig2
         elif selected_data_value == 'House prices':
             fig4 = fig2
@@ -673,7 +680,8 @@ def update_graph(
     elif selected_method_value == 'CNN':
         if selected_data_value == 'Sales data - Walmart':
             CNN_prediction = neural_networks_predict("model_CNN.pkl", X_train, Y_train, X_test, Y_test)
-            fig4 = plot_predict(data_train_ready_many_features, train_len_many, CNN_prediction)
+            fig4 = plot_predict(data_train_ready_many_features, train_len_neural, CNN_prediction, data_train_ready_many_features.Weekly_Sales, 
+             data_train_ready_many_features.Date)
             fig3 = fig2
         elif selected_data_value == 'House prices':
             fig4 = fig2
@@ -681,7 +689,8 @@ def update_graph(
     elif selected_method_value == 'RNN':
         if selected_data_value == 'Sales data - Walmart':
             RNN_prediction = neural_networks_predict("model_RNN.pkl", X_train, Y_train, X_test, Y_test)
-            fig4 = plot_predict(data_train_ready_many_features, train_len_many, RNN_prediction)
+            fig4 = plot_predict(data_train_ready_many_features, train_len_neural, RNN_prediction, data_train_ready_many_features.Weekly_Sales, 
+             data_train_ready_many_features.Date)
             fig3 = fig2
         elif selected_data_value == 'House prices':
             fig4 = fig2
@@ -689,7 +698,8 @@ def update_graph(
     elif selected_method_value == 'LSTM':
         if selected_data_value == 'Sales data - Walmart':
             LSTM_prediction = neural_networks_predict("model_LSTM.pkl", X_train, Y_train, X_test, Y_test)
-            fig4 = plot_predict(data_train_ready_many_features, train_len_many, LSTM_prediction)
+            fig4 = plot_predict(data_train_ready_many_features, train_len_neural, LSTM_prediction, data_train_ready_many_features.Weekly_Sales, 
+             data_train_ready_many_features.Date)
             fig3 = fig2
         elif selected_data_value == 'House prices':
             fig4 = fig2
@@ -697,7 +707,8 @@ def update_graph(
     elif selected_method_value == 'GRU':
         if selected_data_value == 'Sales data - Walmart':
             GRU_prediction = neural_networks_predict("model_GRU.pkl", X_train, Y_train, X_test, Y_test)
-            fig4 = plot_predict(data_train_ready_many_features, train_len_many, GRU_prediction)
+            fig4 = plot_predict(data_train_ready_many_features, train_len_neural, GRU_prediction, data_train_ready_many_features.Weekly_Sales, 
+             data_train_ready_many_features.Date)
             fig3 = fig2
         elif selected_data_value == 'House prices':
             fig4 = fig2
